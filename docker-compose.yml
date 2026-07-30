@@ -11,13 +11,47 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-  
+
   mongodb:
     image: mongo:7.0
     ports:
       - "27017:27017"
     volumes:
       - mongodata:/data/db
+
+  auth-service:
+    build: 
+      context: .
+      dockerfile: auth-service/Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      DATABASE_URL: "postgres://auth_user:auth_password@postgres:5432/auth_db?sslmode=disable"
+    depends_on:
+      - postgres
+
+  goods-service:
+    build:
+      context: .
+      dockerfile: goods-service/Dockerfile
+    ports:
+      - "50052:50052"
+    environment:
+      MONGO_URI: "mongodb://mongodb:27017"
+    depends_on:
+      - mongodb
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_SERVICE_ADDR: "auth-service:50051"
+    depends_on:
+      - auth-service
+      - goods-service
 
 volumes:
   pgdata:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"os"
 
 	"github.com/Sp1r14ual/ecommerce-go/goods-service/internal/domain"
 	"github.com/Sp1r14ual/ecommerce-go/goods-service/internal/repository"
@@ -58,8 +59,13 @@ func (s *GoodsServer) ListProducts(ctx context.Context, req *pb.ListProductsRequ
 
 func main() {
 	// Подключаемся к MongoDB (в докере)
+	mongoURI := os.Getenv("MONGO_URI")
+	if mongoURI == "" {
+		mongoURI = "mongodb://localhost:27017"
+	}
+
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
 	if err != nil {
 		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}

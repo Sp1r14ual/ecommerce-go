@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"os"
 
 	"github.com/Sp1r14ual/ecommerce-go/auth-service/internal/repository"
 	"github.com/Sp1r14ual/ecommerce-go/auth-service/internal/server"
@@ -17,7 +18,11 @@ import (
 
 func main() {
 	// 1. Строка подключения к нашему Postgres из docker-compose
-	connString := "postgres://auth_user:auth_password@localhost:5432/auth_db?sslmode=disable"
+	// Ищем переменную DATABASE_URL, если её нет - берем дефолтный localhost
+	connString := os.Getenv("DATABASE_URL")
+	if connString == "" {
+		connString = "postgres://auth_user:auth_password@localhost:5432/auth_db?sslmode=disable"
+	}
 
 	ctx := context.Background()
 	dbPool, err := pgxpool.New(ctx, connString)

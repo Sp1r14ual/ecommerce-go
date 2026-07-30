@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
 	pb "github.com/Sp1r14ual/ecommerce-go/proto/auth"
 
@@ -21,7 +22,11 @@ type AuthRequest struct {
 func main() {
 	// 1. Создаем соединение с gRPC сервером (наш Auth Service)
 	// В Go > 1.21 используется grpc.NewClient вместо устаревшего grpc.Dial
-	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	authAddr := os.Getenv("AUTH_SERVICE_ADDR")
+	if authAddr == "" {
+		authAddr = "localhost:50051"
+	}
+	conn, err := grpc.NewClient(authAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
