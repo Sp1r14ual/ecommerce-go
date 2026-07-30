@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package goods;
+
+option go_package = "ecommerce-go/proto/goods;goods";
+
+// Сервис каталога
+service GoodsService {
+  // Добавить товар
+  rpc CreateProduct (CreateProductRequest) returns (CreateProductResponse);
+  // Получить список всех товаров
+  rpc ListProducts (ListProductsRequest) returns (ListProductsResponse);
+}
+
+message Product {
+  string id = 1;          // В MongoDB ID - это строка особого формата (ObjectID)
+  string name = 2;
+  string description = 3;
+  int64 price = 4;        // Деньги ВСЕГДА храним в минимальных единицах (копейки/центы), чтобы не было ошибок округления!
+}
+
+message CreateProductRequest {
+  string name = 1;
+  string description = 2;
+  int64 price = 3;
+}
+
+message CreateProductResponse {
+  string id = 1;
+}
+
+message ListProductsRequest {
+  // Пока оставим пустым, в будущем тут можно добавить пагинацию (limit, offset)
+}
+
+message ListProductsResponse {
+  repeated Product products = 1; // repeated означает массив (срез) товаров
+}
