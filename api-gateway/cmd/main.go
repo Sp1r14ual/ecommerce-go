@@ -9,6 +9,7 @@ import (
 
 	authPb "github.com/Sp1r14ual/ecommerce-go/proto/auth"   // Алиас для пакета auth
 	goodsPb "github.com/Sp1r14ual/ecommerce-go/proto/goods" // Алиас для пакета goods
+	orderPb "github.com/Sp1r14ual/ecommerce-go/proto/order"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -23,6 +24,12 @@ type CreateProductRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Price       int64  `json:"price"`
+}
+
+type CreateOrderRequest struct { // <-- ДОБАВИЛИ СТРУКТУРУ ЗАКАЗА
+	UserID    int64  `json:"user_id"`
+	ProductID string `json:"product_id"`
+	Quantity  int32  `json:"quantity"`
 }
 
 func main() {
@@ -49,6 +56,15 @@ func main() {
 	}
 	defer goodsConn.Close()
 	goodsClient := goodsPb.NewGoodsServiceClient(goodsConn)
+
+	// --- Подключение к Order Service ---
+	orderAddr := os.Getenv("ORDER_SERVICE_ADDR")
+	if orderAddr == "" {
+		orderAddr = "localhost:50053"
+	}
+	orderConn, _ := grpc.NewClient(orderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	defer orderConn.Close()
+	orderClient := orderPb.NewOrderServiceClient(orderConn)
 
 	// --- Настройка Роутера ---
 	mux := http.NewServeMux()
@@ -112,6 +128,30 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp.GetProducts())
+	})
+
+	mux.HandleFunc("POST /api/orders", func(w http.ResponseWriter, r *http.Request) {
+		var req CreateOrderRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		resp, err := orderClient.CreateOrder(context.Background(), &orderPb.CreateOrderRequest{
+			UserId:    req.UserID,
+			ProductId: req.ProductID,
+			Quantity:  req.Quantity,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"order_id": resp.GetOrderId(),
+			"status":   resp.GetStatus(),
+		})
 	})
 
 	// --- Запуск ---

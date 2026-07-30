@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -15,12 +17,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+
+	"github.com/segmentio/kafka-go"
 )
 
 type OrderServer struct {
 	pb.UnimplementedOrderServiceServer
 	db          *pgxpool.Pool
 	goodsClient goodsPb.GoodsServiceClient // Клиент для похода в Каталог
+	kafkaWriter *kafka.Writer
 }
 
 func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.CreateOrderResponse, error) {
@@ -42,6 +47,27 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 	err = s.db.QueryRow(ctx, query, req.GetUserId(), req.GetProductId(), req.GetQuantity(), totalPrice, "CREATED").Scan(&orderID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create order in db: %v", err)
+	}
+
+	// Формируем сообщение (для простоты - JSON)
+	eventMsg := map[string]interface{}{
+		"order_id": orderID,
+		"user_id":  req.GetUserId(),
+		"status":   "CREATED",
+	}
+	eventBytes, _ := json.Marshal(eventMsg)
+
+	// Пишем в топик "orders"
+	err = s.kafkaWriter.WriteMessages(ctx, kafka.Message{
+		Key:   []byte(fmt.Sprint(orderID)), // Ключ нужен, чтобы сообщения одного заказа шли по порядку
+		Value: eventBytes,
+	})
+	if err != nil {
+		// Даже если Kafka упала, заказ мы уже создали в БД.
+		// Просто логируем ошибку, но не возвращаем её юзеру!
+		log.Printf("Failed to write to Kafka: %v", err)
+	} else {
+		log.Printf("Order #%d event published to Kafka!", orderID)
 	}
 
 	log.Printf("Order #%d created successfully for user %d!", orderID, req.GetUserId())
@@ -83,6 +109,19 @@ func main() {
 		log.Fatalf("Failed to create orders table: %v", err)
 	}
 
+	// --- 1.5 Подключение к Kafka ---
+	kafkaAddr := os.Getenv("KAFKA_ADDR")
+	if kafkaAddr == "" {
+		kafkaAddr = "localhost:9092"
+	}
+
+	kw := &kafka.Writer{
+		Addr:     kafka.TCP(kafkaAddr),
+		Topic:    "orders", // Название нашего "канала"
+		Balancer: &kafka.LeastBytes{},
+	}
+	defer kw.Close()
+
 	// --- 2. Подключение к Goods Service (Клиент) ---
 	goodsAddr := os.Getenv("GOODS_SERVICE_ADDR")
 	if goodsAddr == "" {
@@ -105,6 +144,7 @@ func main() {
 	pb.RegisterOrderServiceServer(s, &OrderServer{
 		db:          dbPool,
 		goodsClient: goodsClient,
+		kafkaWriter: kw,
 	})
 
 	reflection.Register(s) // Для тестов из Postman
