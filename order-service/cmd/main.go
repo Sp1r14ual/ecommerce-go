@@ -20,6 +20,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/segmentio/kafka-go"
+
+	"github.com/Sp1r14ual/ecommerce-go/pkg/tracer"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
 
 type OrderServer struct {
@@ -91,6 +94,14 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 }
 
 func main() {
+	jaegerAddr := os.Getenv("JAEGER_ADDR")
+	if jaegerAddr == "" {
+		jaegerAddr = "localhost:4317"
+	}
+
+	tp, _ := tracer.InitTracer("order-service", jaegerAddr)
+	defer tp.Shutdown(context.Background())
+
 	ctx := context.Background()
 
 	// --- 1. Подключение к Базе Данных (Postgres) ---
@@ -161,7 +172,7 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	pb.RegisterOrderServiceServer(s, &OrderServer{
 		db:            dbPool,
 		goodsClient:   goodsClient,

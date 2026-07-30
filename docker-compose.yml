@@ -34,6 +34,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686" # Порт для красивого Web-интерфейса
+      - "4317:4317"   # Порт (gRPC) куда сервисы будут слать логи
+
   auth-service:
     build: 
       context: .
@@ -67,6 +73,7 @@ services:
       GOODS_SERVICE_ADDR: "goods-service:50052"
       PAYMENT_SERVICE_ADDR: "payment-service:50054"
       KAFKA_ADDR: "kafka:9092"
+      JAEGER_ADDR: "jaeger:4317" 
     depends_on:
       - postgres
       - goods-service
@@ -108,10 +115,12 @@ services:
       AUTH_SERVICE_ADDR: "auth-service:50051"
       GOODS_SERVICE_ADDR: "goods-service:50052" 
       ORDER_SERVICE_ADDR: "order-service:50053"
+      JAEGER_ADDR: "jaeger:4317"
     depends_on:
       - auth-service
       - goods-service
       - order-service
+      - jaeger
 
 volumes:
   pgdata:

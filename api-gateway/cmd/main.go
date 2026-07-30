@@ -10,9 +10,13 @@ import (
 	authPb "github.com/Sp1r14ual/ecommerce-go/proto/auth"   // Алиас для пакета auth
 	goodsPb "github.com/Sp1r14ual/ecommerce-go/proto/goods" // Алиас для пакета goods
 	orderPb "github.com/Sp1r14ual/ecommerce-go/proto/order"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/Sp1r14ual/ecommerce-go/pkg/tracer" // Наша новая папка
 )
 
 type AuthRequest struct {
@@ -33,12 +37,22 @@ type CreateOrderRequest struct { // <-- ДОБАВИЛИ СТРУКТУРУ ЗА
 }
 
 func main() {
+	jaegerAddr := os.Getenv("JAEGER_ADDR")
+	if jaegerAddr == "" {
+		jaegerAddr = "localhost:4317"
+	}
+
+	tp, _ := tracer.InitTracer("api-gateway", jaegerAddr)
+	defer tp.Shutdown(context.Background())
+
 	// --- Подключение к Auth Service ---
 	authAddr := os.Getenv("AUTH_SERVICE_ADDR")
 	if authAddr == "" {
 		authAddr = "localhost:50051"
 	}
-	authConn, err := grpc.NewClient(authAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	authConn, err := grpc.NewClient(authAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		log.Fatalf("failed to connect to auth: %v", err)
 	}
@@ -50,7 +64,9 @@ func main() {
 	if goodsAddr == "" {
 		goodsAddr = "localhost:50052"
 	}
-	goodsConn, err := grpc.NewClient(goodsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	goodsConn, err := grpc.NewClient(goodsAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		log.Fatalf("failed to connect to goods: %v", err)
 	}
@@ -62,7 +78,10 @@ func main() {
 	if orderAddr == "" {
 		orderAddr = "localhost:50053"
 	}
-	orderConn, _ := grpc.NewClient(orderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	orderConn, _ := grpc.NewClient(orderAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+	)
 	defer orderConn.Close()
 	orderClient := orderPb.NewOrderServiceClient(orderConn)
 
@@ -156,7 +175,8 @@ func main() {
 
 	// --- Запуск ---
 	log.Println("API Gateway is running on http://localhost:8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	handler := otelhttp.NewHandler(mux, "api-gateway-http")
+	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("failed to serve HTTP: %v", err)
 	}
 }
