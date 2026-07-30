@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -55,6 +56,8 @@ func main() {
 
 	// Регистрируем наш обработчик в сервере
 	pb.RegisterAuthServiceServer(s, grpcHandler)
+
+	reflection.Register(s)
 
 	log.Println("Auth gRPC Service is running on port 50051...")
 	if err := s.Serve(lis); err != nil {
