@@ -10,6 +10,8 @@ service GoodsService {
   rpc CreateProduct (CreateProductRequest) returns (CreateProductResponse);
   // Получить список всех товаров
   rpc ListProducts (ListProductsRequest) returns (ListProductsResponse);
+  // Получить товар
+  rpc GetProduct (GetProductRequest) returns (Product);
 }
 
 message Product {
@@ -35,4 +37,8 @@ message ListProductsRequest {
 
 message ListProductsResponse {
   repeated Product products = 1; // repeated означает массив (срез) товаров
+}
+
+message GetProductRequest { 
+  string id = 1; 
 }

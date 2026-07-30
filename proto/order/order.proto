@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package order;
+
+option go_package = "ecommerce-go/proto/order;order";
+
+// Сервис Заказов
+service OrderService {
+  // Создать новый заказ
+  rpc CreateOrder (CreateOrderRequest) returns (CreateOrderResponse);
+  
+  // Здесь в будущем можно добавить GetOrder (получить инфу по заказу)
+}
+
+message CreateOrderRequest {
+  int64 user_id = 1;      // Кто покупает (ID юзера) 
+  string product_id = 2;  // Что покупает (ID товара из MongoDB)
+  int32 quantity = 3;     // Количество
+}
+
+message CreateOrderResponse {
+  int64 order_id = 1;     // Номер созданного заказа
+  string status = 2;      // Статус заказа (например, "CREATED")
+}

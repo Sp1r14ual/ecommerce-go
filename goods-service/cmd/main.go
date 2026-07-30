@@ -57,6 +57,20 @@ func (s *GoodsServer) ListProducts(ctx context.Context, req *pb.ListProductsRequ
 	return &pb.ListProductsResponse{Products: pbProducts}, nil
 }
 
+func (s *GoodsServer) GetProduct(ctx context.Context, req *pb.GetProductRequest) (*pb.Product, error) {
+	p, err := s.repo.Get(ctx, req.GetId())
+	if err != nil {
+		return nil, err // В идеале тут возвращать status.Error(codes.NotFound, ...)
+	}
+
+	return &pb.Product{
+		Id:          p.ID.Hex(),
+		Name:        p.Name,
+		Description: p.Description,
+		Price:       p.Price,
+	}, nil
+}
+
 func main() {
 	// Подключаемся к MongoDB (в докере)
 	mongoURI := os.Getenv("MONGO_URI")

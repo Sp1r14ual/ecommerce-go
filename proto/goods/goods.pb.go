@@ -273,6 +273,50 @@ func (x *ListProductsResponse) GetProducts() []*Product {
 	return nil
 }
 
+type GetProductRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProductRequest) Reset() {
+	*x = GetProductRequest{}
+	mi := &file_goods_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProductRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProductRequest) ProtoMessage() {}
+
+func (x *GetProductRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_goods_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProductRequest.ProtoReflect.Descriptor instead.
+func (*GetProductRequest) Descriptor() ([]byte, []int) {
+	return file_goods_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetProductRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 var File_goods_proto protoreflect.FileDescriptor
 
 const file_goods_proto_rawDesc = "" +
@@ -291,10 +335,14 @@ const file_goods_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x15\n" +
 	"\x13ListProductsRequest\"B\n" +
 	"\x14ListProductsResponse\x12*\n" +
-	"\bproducts\x18\x01 \x03(\v2\x0e.goods.ProductR\bproducts2\xa3\x01\n" +
+	"\bproducts\x18\x01 \x03(\v2\x0e.goods.ProductR\bproducts\"#\n" +
+	"\x11GetProductRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id2\xdb\x01\n" +
 	"\fGoodsService\x12J\n" +
 	"\rCreateProduct\x12\x1b.goods.CreateProductRequest\x1a\x1c.goods.CreateProductResponse\x12G\n" +
-	"\fListProducts\x12\x1a.goods.ListProductsRequest\x1a\x1b.goods.ListProductsResponseB Z\x1eecommerce-go/proto/goods;goodsb\x06proto3"
+	"\fListProducts\x12\x1a.goods.ListProductsRequest\x1a\x1b.goods.ListProductsResponse\x126\n" +
+	"\n" +
+	"GetProduct\x12\x18.goods.GetProductRequest\x1a\x0e.goods.ProductB Z\x1eecommerce-go/proto/goods;goodsb\x06proto3"
 
 var (
 	file_goods_proto_rawDescOnce sync.Once
@@ -308,22 +356,25 @@ func file_goods_proto_rawDescGZIP() []byte {
 	return file_goods_proto_rawDescData
 }
 
-var file_goods_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_goods_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_goods_proto_goTypes = []any{
 	(*Product)(nil),               // 0: goods.Product
 	(*CreateProductRequest)(nil),  // 1: goods.CreateProductRequest
 	(*CreateProductResponse)(nil), // 2: goods.CreateProductResponse
 	(*ListProductsRequest)(nil),   // 3: goods.ListProductsRequest
 	(*ListProductsResponse)(nil),  // 4: goods.ListProductsResponse
+	(*GetProductRequest)(nil),     // 5: goods.GetProductRequest
 }
 var file_goods_proto_depIdxs = []int32{
 	0, // 0: goods.ListProductsResponse.products:type_name -> goods.Product
 	1, // 1: goods.GoodsService.CreateProduct:input_type -> goods.CreateProductRequest
 	3, // 2: goods.GoodsService.ListProducts:input_type -> goods.ListProductsRequest
-	2, // 3: goods.GoodsService.CreateProduct:output_type -> goods.CreateProductResponse
-	4, // 4: goods.GoodsService.ListProducts:output_type -> goods.ListProductsResponse
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
+	5, // 3: goods.GoodsService.GetProduct:input_type -> goods.GetProductRequest
+	2, // 4: goods.GoodsService.CreateProduct:output_type -> goods.CreateProductResponse
+	4, // 5: goods.GoodsService.ListProducts:output_type -> goods.ListProductsResponse
+	0, // 6: goods.GoodsService.GetProduct:output_type -> goods.Product
+	4, // [4:7] is the sub-list for method output_type
+	1, // [1:4] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -340,7 +391,7 @@ func file_goods_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_goods_proto_rawDesc), len(file_goods_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

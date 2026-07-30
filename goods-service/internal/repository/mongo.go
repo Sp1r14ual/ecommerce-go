@@ -49,3 +49,16 @@ func (r *GoodsRepo) ListAll(ctx context.Context) ([]*domain.Product, error) {
 
 	return products, nil
 }
+
+func (r *GoodsRepo) Get(ctx context.Context, id string) (*domain.Product, error) {
+	// Конвертируем строку с ID в формат ObjectID для Mongo
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, err
+	}
+
+	var p domain.Product
+	// Ищем один документ по _id
+	err = r.collection.FindOne(ctx, bson.M{"_id": oid}).Decode(&p)
+	return &p, err
+}
