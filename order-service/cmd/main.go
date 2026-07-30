@@ -10,6 +10,7 @@ import (
 
 	goodsPb "github.com/Sp1r14ual/ecommerce-go/proto/goods"
 	pb "github.com/Sp1r14ual/ecommerce-go/proto/order"
+	paymentPb "github.com/Sp1r14ual/ecommerce-go/proto/payment"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
@@ -23,9 +24,10 @@ import (
 
 type OrderServer struct {
 	pb.UnimplementedOrderServiceServer
-	db          *pgxpool.Pool
-	goodsClient goodsPb.GoodsServiceClient // Клиент для похода в Каталог
-	kafkaWriter *kafka.Writer
+	db            *pgxpool.Pool
+	goodsClient   goodsPb.GoodsServiceClient // Клиент для похода в Каталог
+	paymentClient paymentPb.PaymentServiceClient
+	kafkaWriter   *kafka.Writer
 }
 
 func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.CreateOrderResponse, error) {
@@ -40,6 +42,15 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 	// 2. БИЗНЕС-ЛОГИКА: Считаем итоговую цену (Цена * Количество)
 	totalPrice := product.GetPrice() * int64(req.GetQuantity())
 
+	// 2.5. МЕЖСЕРВИСНЫЙ ВЫЗОВ: Идем в Payment Service за оплатой
+	payResp, err := s.paymentClient.ProcessPayment(ctx, &paymentPb.PaymentRequest{
+		UserId: req.GetUserId(),
+		Amount: totalPrice,
+	})
+	if err != nil || !payResp.GetSuccess() {
+		return nil, status.Errorf(codes.Aborted, "payment failed")
+	}
+
 	// 3. СОХРАНЕНИЕ В БД:
 	var orderID int64
 	query := `INSERT INTO orders (user_id, product_id, quantity, total_price, status) VALUES ($1, $2, $3, $4, $5) RETURNING id`
@@ -49,11 +60,12 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 		return nil, status.Errorf(codes.Internal, "failed to create order in db: %v", err)
 	}
 
+	// 4. ПУБЛИКАЦИЯ СОБЫТИЯ В KAFKA
 	// Формируем сообщение (для простоты - JSON)
 	eventMsg := map[string]interface{}{
 		"order_id": orderID,
 		"user_id":  req.GetUserId(),
-		"status":   "CREATED",
+		"status":   "PAID",
 	}
 	eventBytes, _ := json.Marshal(eventMsg)
 
@@ -134,6 +146,15 @@ func main() {
 	defer goodsConn.Close()
 	goodsClient := goodsPb.NewGoodsServiceClient(goodsConn)
 
+	// --- 2.5. Подключение к Payment Service (Клиент) ---
+	paymentAddr := os.Getenv("PAYMENT_SERVICE_ADDR")
+	if paymentAddr == "" {
+		paymentAddr = "localhost:50054"
+	}
+	paymentConn, err := grpc.NewClient(paymentAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	defer paymentConn.Close()
+	paymentClient := paymentPb.NewPaymentServiceClient(paymentConn)
+
 	// --- 3. Поднимаем наш собственный gRPC Сервер на ПОРТУ 50053 ---
 	lis, err := net.Listen("tcp", ":50053")
 	if err != nil {
@@ -142,9 +163,10 @@ func main() {
 
 	s := grpc.NewServer()
 	pb.RegisterOrderServiceServer(s, &OrderServer{
-		db:          dbPool,
-		goodsClient: goodsClient,
-		kafkaWriter: kw,
+		db:            dbPool,
+		goodsClient:   goodsClient,
+		paymentClient: paymentClient,
+		kafkaWriter:   kw,
 	})
 
 	reflection.Register(s) // Для тестов из Postman

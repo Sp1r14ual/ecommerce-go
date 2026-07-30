@@ -25,7 +25,7 @@ func main() {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     []string{kafkaAddr},
 		Topic:       "orders",
-		GroupID:     "notify-group-v2", // Имя группы консьюмеров (важно для правильного масштабирования)
+		GroupID:     "notify-group-v2.1", // Имя группы консьюмеров (важно для правильного масштабирования)
 		StartOffset: kafka.FirstOffset,
 	})
 	defer reader.Close()

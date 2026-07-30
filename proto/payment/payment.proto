@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package payment;
+
+option go_package = "ecommerce-go/proto/payment;payment";
+
+service PaymentService {
+  rpc ProcessPayment (PaymentRequest) returns (PaymentResponse);
+}
+
+message PaymentRequest {
+  int64 user_id = 1;
+  int64 amount = 2; // Сумма к оплате
+}
+
+message PaymentResponse {
+  bool success = 1;
+  string transaction_id = 2; // ID транзакции в банковской системе (чисто для вида)
+}

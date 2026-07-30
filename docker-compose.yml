@@ -65,16 +65,34 @@ services:
     environment:
       DATABASE_URL: "postgres://auth_user:auth_password@postgres:5432/auth_db?sslmode=disable"
       GOODS_SERVICE_ADDR: "goods-service:50052"
+      PAYMENT_SERVICE_ADDR: "payment-service:50054"
       KAFKA_ADDR: "kafka:9092"
     depends_on:
       - postgres
       - goods-service
+      - payment-service
       - kafka
   
   notify-service:
     build:
       context: .
       dockerfile: notify-service/Dockerfile
+    environment:
+      KAFKA_ADDR: "kafka:9092"
+    depends_on:
+      - kafka
+  
+  payment-service:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    ports:
+      - "50054:50054"
+
+  delivery-service:
+    build:
+      context: .
+      dockerfile: delivery-service/Dockerfile
     environment:
       KAFKA_ADDR: "kafka:9092"
     depends_on:
