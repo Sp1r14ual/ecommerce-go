@@ -9,6 +9,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
 
   mongodb:
     image: mongo:7.0
@@ -33,6 +38,23 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+  
+  # Этот контейнер просто создаст топик "orders" и завершит работу (Exited)
+  kafka-setup:
+    image: apache/kafka:latest
+    depends_on:
+      - kafka
+    # Крутимся в цикле, пока Кафка не ответит, затем создаем топик!
+    command: >
+      bash -c "
+        echo 'Wait for Kafka to be ready...'
+        for i in {1..30}; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list > /dev/null 2>&1 && break || sleep 2;
+        done;
+        echo 'Kafka is ready. Creating topic...'
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic orders --replication-factor 1 --partitions 1
+        echo 'Setup complete!'
+      "
 
   jaeger:
     image: jaegertracing/all-in-one:latest
@@ -49,7 +71,8 @@ services:
     environment:
       DATABASE_URL: "postgres://auth_user:auth_password@postgres:5432/auth_db?sslmode=disable"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   goods-service:
     build:
@@ -75,10 +98,14 @@ services:
       KAFKA_ADDR: "kafka:9092"
       JAEGER_ADDR: "jaeger:4317" 
     depends_on:
-      - postgres
-      - goods-service
-      - payment-service
-      - kafka
+      postgres:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully # Ждем успешного завершения скрипта
+      goods-service:
+        condition: service_started # для обычных сервисов оставляем started (эквивалент старого синтаксиса)
+      payment-service:
+        condition: service_started
   
   notify-service:
     build:
@@ -87,7 +114,8 @@ services:
     environment:
       KAFKA_ADDR: "kafka:9092"
     depends_on:
-      - kafka
+      kafka-setup:
+        condition: service_completed_successfully
   
   payment-service:
     build:
@@ -103,7 +131,8 @@ services:
     environment:
       KAFKA_ADDR: "kafka:9092"
     depends_on:
-      - kafka
+      kafka-setup:
+        condition: service_completed_successfully
 
   api-gateway:
     build:

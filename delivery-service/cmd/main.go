@@ -25,8 +25,8 @@ func main() {
 		Brokers: []string{kafkaAddr},
 		Topic:   "orders",
 		// ВАЖНО: имя группы должно отличаться от notify-service!
-		GroupID:     "delivery-group-v2",
-		StartOffset: kafka.FirstOffset,
+		GroupID: "delivery-group",
+		// StartOffset: kafka.FirstOffset,
 	})
 	defer reader.Close()
 
