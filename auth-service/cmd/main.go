@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -42,6 +43,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create table: %v", err)
 	}
+
+	// 1.5 Подключаемся к Redis
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" { redisAddr = "localhost:6379" }
+	
+	rdb := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+	defer rdb.Close()
 
 	// 2. Инициализируем слои по порядку (Dependency Injection)
 	repo := repository.NewAuthRepo(dbPool)
