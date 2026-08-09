@@ -18,8 +18,12 @@ type AuthService struct {
 	jwtSecret string // Секретный ключ для подписи токена
 }
 
-func NewAuthService(repo *repository.AuthRepo, secret string) *AuthService {
-	return &AuthService{repo: repo, jwtSecret: secret}
+func NewAuthService(repo *repository.AuthRepo, rdb *redis.Client, secret string) *AuthService {
+	return &AuthService{
+		repo:      repo,
+		redis:     rdb,
+		jwtSecret: secret,
+	}
 }
 
 // Register хэширует пароль и передает данные в БД
@@ -82,7 +86,9 @@ func (s *AuthService) ValidateToken(ctx context.Context, tokenString string) (in
 
 	// 3. Достаем ID пользователя из токена
 	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok { return 0, errors.New("invalid token claims") }
+	if !ok {
+		return 0, errors.New("invalid token claims")
+	}
 
 	// В JWT числа парсятся как float64
 	userID := int64(claims["uid"].(float64))
