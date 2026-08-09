@@ -44,3 +44,19 @@ func (s *AuthServer) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Login
 
 	return &pb.LoginResponse{AccessToken: token}, nil
 }
+
+func (s *AuthServer) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
+	err := s.authService.Logout(ctx, req.GetAccessToken())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to logout: %v", err)
+	}
+	return &pb.LogoutResponse{Success: true}, nil
+}
+
+func (s *AuthServer) ValidateToken(ctx context.Context, req *pb.ValidateTokenRequest) (*pb.ValidateTokenResponse, error) {
+	userID, err := s.authService.ValidateToken(ctx, req.GetAccessToken())
+	if err != nil {
+		return &pb.ValidateTokenResponse{IsValid: false}, nil
+	}
+	return &pb.ValidateTokenResponse{IsValid: true, UserId: userID}, nil
+}

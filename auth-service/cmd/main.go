@@ -12,6 +12,7 @@ import (
 	pb "github.com/Sp1r14ual/ecommerce-go/proto/auth"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -43,11 +44,22 @@ func main() {
 		log.Fatalf("Failed to create table: %v", err)
 	}
 
+	// 1.5 Подключаемся к Redis
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+	defer rdb.Close()
+
 	// 2. Инициализируем слои по порядку (Dependency Injection)
 	repo := repository.NewAuthRepo(dbPool)
 
 	// В реальном проекте секрет берется из переменных окружения (os.Getenv)
-	svc := service.NewAuthService(repo, "my-super-secret-key-for-jwt")
+	svc := service.NewAuthService(repo, rdb, "my-super-secret-key-for-jwt")
 
 	grpcHandler := server.NewAuthServer(svc)
 

@@ -8,16 +8,22 @@ import (
 	"github.com/Sp1r14ual/ecommerce-go/auth-service/internal/repository"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthService struct {
 	repo      *repository.AuthRepo
+	redis     *redis.Client
 	jwtSecret string // Секретный ключ для подписи токена
 }
 
-func NewAuthService(repo *repository.AuthRepo, secret string) *AuthService {
-	return &AuthService{repo: repo, jwtSecret: secret}
+func NewAuthService(repo *repository.AuthRepo, rdb *redis.Client, secret string) *AuthService {
+	return &AuthService{
+		repo:      repo,
+		redis:     rdb,
+		jwtSecret: secret,
+	}
 }
 
 // Register хэширует пароль и передает данные в БД
@@ -60,4 +66,51 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	}
 
 	return tokenString, nil
+}
+
+// Проверка токена
+func (s *AuthService) ValidateToken(ctx context.Context, tokenString string) (int64, error) {
+	// 1. Проверяем, нет ли токена в черном списке Redis
+	val, _ := s.redis.Get(ctx, tokenString).Result()
+	if val == "revoked" {
+		return 0, errors.New("token is blacklisted (logged out)")
+	}
+
+	// 2. Проверяем математическую валидность самого токена
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(s.jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return 0, errors.New("invalid token")
+	}
+
+	// 3. Достаем ID пользователя из токена
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, errors.New("invalid token claims")
+	}
+
+	// В JWT числа парсятся как float64
+	userID := int64(claims["uid"].(float64))
+	return userID, nil
+}
+
+// Логаут
+func (s *AuthService) Logout(ctx context.Context, tokenString string) error {
+	// Распарсим токен, чтобы узнать, когда он умрет естественной смертью
+	token, _ := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(s.jwtSecret), nil
+	})
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		exp := int64(claims["exp"].(float64))
+		ttl := time.Until(time.Unix(exp, 0))
+
+		// Если токен еще не протух - кладем его в Redis на оставшееся время!
+		if ttl > 0 {
+			err := s.redis.Set(ctx, tokenString, "revoked", ttl).Err()
+			return err
+		}
+	}
+	return nil
 }

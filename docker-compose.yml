@@ -22,6 +22,11 @@ services:
     volumes:
       - mongodata:/data/db
   
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  
   kafka:
     image: apache/kafka:latest
     ports:
@@ -70,6 +75,7 @@ services:
       - "50051:50051"
     environment:
       DATABASE_URL: "postgres://auth_user:auth_password@postgres:5432/auth_db?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
     depends_on:
       postgres:
         condition: service_healthy
