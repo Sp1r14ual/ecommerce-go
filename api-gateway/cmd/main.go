@@ -18,6 +18,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // --- СТРУКТУРЫ ---
@@ -33,13 +35,14 @@ type CreateProductRequest struct {
 }
 
 // Теперь клиент не передает user_id, мы берем его из токена!
-type CreateOrderRequest struct { 
+type CreateOrderRequest struct {
 	ProductID string `json:"product_id"`
 	Quantity  int32  `json:"quantity"`
 }
 
 // Кастомный тип для ключа контекста (хорошая практика в Go)
 type contextKey string
+
 const userIDKey contextKey = "user_id"
 
 // --- MIDDLEWARE ДЛЯ ПРОВЕРКИ ТОКЕНА ---
@@ -78,25 +81,33 @@ func authMiddleware(authClient authPb.AuthServiceClient, next http.HandlerFunc) 
 func main() {
 	// Инициализация трейсера Jaeger
 	jaegerAddr := os.Getenv("JAEGER_ADDR")
-	if jaegerAddr == "" { jaegerAddr = "localhost:4317" }
+	if jaegerAddr == "" {
+		jaegerAddr = "localhost:4317"
+	}
 	tp, _ := tracer.InitTracer("api-gateway", jaegerAddr)
 	defer tp.Shutdown(context.Background())
 
 	// Подключения к gRPC сервисам (с трейсингом)
 	authAddr := os.Getenv("AUTH_SERVICE_ADDR")
-	if authAddr == "" { authAddr = "localhost:50051" }
+	if authAddr == "" {
+		authAddr = "localhost:50051"
+	}
 	authConn, _ := grpc.NewClient(authAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	defer authConn.Close()
 	authClient := authPb.NewAuthServiceClient(authConn)
 
 	goodsAddr := os.Getenv("GOODS_SERVICE_ADDR")
-	if goodsAddr == "" { goodsAddr = "localhost:50052" }
+	if goodsAddr == "" {
+		goodsAddr = "localhost:50052"
+	}
 	goodsConn, _ := grpc.NewClient(goodsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	defer goodsConn.Close()
 	goodsClient := goodsPb.NewGoodsServiceClient(goodsConn)
 
 	orderAddr := os.Getenv("ORDER_SERVICE_ADDR")
-	if orderAddr == "" { orderAddr = "localhost:50053" }
+	if orderAddr == "" {
+		orderAddr = "localhost:50053"
+	}
 	orderConn, _ := grpc.NewClient(orderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	defer orderConn.Close()
 	orderClient := orderPb.NewOrderServiceClient(orderConn)
@@ -108,7 +119,10 @@ func main() {
 		var req AuthRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		resp, err := authClient.Register(r.Context(), &authPb.RegisterRequest{Email: req.Email, Password: req.Password})
-		if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"user_id": resp.GetUserId()})
 	})
@@ -117,17 +131,26 @@ func main() {
 		var req AuthRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		resp, err := authClient.Login(r.Context(), &authPb.LoginRequest{Email: req.Email, Password: req.Password})
-		if err != nil { http.Error(w, "Unauthorized", http.StatusUnauthorized); return }
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"access_token": resp.GetAccessToken()})
 	})
 
 	mux.HandleFunc("GET /api/products", func(w http.ResponseWriter, r *http.Request) {
 		resp, err := goodsClient.ListProducts(r.Context(), &goodsPb.ListProductsRequest{})
-		if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp.GetProducts())
+
 	})
+
+	mux.Handle("GET /metrics", promhttp.Handler())
 
 	// --- ЗАЩИЩЕННЫЕ РУЧКИ (Нужен JWT) ---
 	// Заворачиваем функцию-обработчик в нашу authMiddleware
@@ -136,7 +159,10 @@ func main() {
 	mux.HandleFunc("POST /api/logout", authMiddleware(authClient, func(w http.ResponseWriter, r *http.Request) {
 		token := strings.Split(r.Header.Get("Authorization"), " ")[1]
 		_, err := authClient.Logout(r.Context(), &authPb.LogoutRequest{AccessToken: token})
-		if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"status": "logged out and token revoked"})
 	}))
@@ -146,7 +172,10 @@ func main() {
 		var req CreateProductRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		resp, err := goodsClient.CreateProduct(r.Context(), &goodsPb.CreateProductRequest{Name: req.Name, Description: req.Description, Price: req.Price})
-		if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"id": resp.GetId()})
 	}))
@@ -155,7 +184,8 @@ func main() {
 	mux.HandleFunc("POST /api/orders", authMiddleware(authClient, func(w http.ResponseWriter, r *http.Request) {
 		var req CreateOrderRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest); return
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		// ДОСТАЕМ ИЗ КОНТЕКСТА ID АВТОРИЗОВАННОГО ПОЛЬЗОВАТЕЛЯ
@@ -166,8 +196,11 @@ func main() {
 			ProductId: req.ProductID,
 			Quantity:  req.Quantity,
 		})
-		if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
-		
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"order_id": resp.GetOrderId(), "status": resp.GetStatus()})
 	}))
