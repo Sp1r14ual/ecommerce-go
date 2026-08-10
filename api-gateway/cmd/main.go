@@ -8,78 +8,226 @@ import (
 	"os"
 	"strings"
 
+	_ "github.com/Sp1r14ual/ecommerce-go/api-gateway/docs"
+
 	authPb "github.com/Sp1r14ual/ecommerce-go/proto/auth"
 	goodsPb "github.com/Sp1r14ual/ecommerce-go/proto/goods"
 	orderPb "github.com/Sp1r14ual/ecommerce-go/proto/order"
 
 	"github.com/Sp1r14ual/ecommerce-go/pkg/tracer"
 
+	httpSwagger "github.com/swaggo/http-swagger/v2" // Swagger handler
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// --- СТРУКТУРЫ ---
+// @title E-Commerce API Gateway
+// @version 1.0
+// @description API Gateway for the Go microservices E-Commerce project.
+// @host localhost:8080
+// @BasePath /api
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
+// --- СТРУКТУРЫ (Запросы и Ответы) ---
 type AuthRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
-
 type CreateProductRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Price       int64  `json:"price"`
 }
-
-// Теперь клиент не передает user_id, мы берем его из токена!
 type CreateOrderRequest struct {
 	ProductID string `json:"product_id"`
 	Quantity  int32  `json:"quantity"`
 }
 
-// Кастомный тип для ключа контекста (хорошая практика в Go)
+// Структуры для ответов, чтобы Swagger красиво рисовал модели
+type RegisterResponse struct {
+	UserID int64 `json:"user_id"`
+}
+type LoginResponse struct {
+	AccessToken string `json:"access_token"`
+}
+type ProductIDResponse struct {
+	ID string `json:"id"`
+}
+type ProductResponse struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Price       int64  `json:"price"`
+}
+type OrderResponse struct {
+	OrderID int64  `json:"order_id"`
+	Status  string `json:"status"`
+}
+type MessageResponse struct {
+	Status string `json:"status"`
+}
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 type contextKey string
 
 const userIDKey contextKey = "user_id"
 
-// --- MIDDLEWARE ДЛЯ ПРОВЕРКИ ТОКЕНА ---
+// --- СТРУКТУРА ХЕНДЛЕРА ---
+type GatewayHandler struct {
+	authClient  authPb.AuthServiceClient
+	goodsClient goodsPb.GoodsServiceClient
+	orderClient orderPb.OrderServiceClient
+}
+
+// @Summary Registration
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body AuthRequest true "Credentials"
+// @Success 200 {object} RegisterResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /register [post]
+func (h *GatewayHandler) Register(w http.ResponseWriter, r *http.Request) {
+	var req AuthRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	resp, err := h.authClient.Register(r.Context(), &authPb.RegisterRequest{Email: req.Email, Password: req.Password})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(RegisterResponse{UserID: resp.GetUserId()})
+}
+
+// @Summary Login
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body AuthRequest true "Credentials"
+// @Success 200 {object} LoginResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /login [post]
+func (h *GatewayHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req AuthRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	resp, err := h.authClient.Login(r.Context(), &authPb.LoginRequest{Email: req.Email, Password: req.Password})
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(LoginResponse{AccessToken: resp.GetAccessToken()})
+}
+
+// @Summary Logout
+// @Tags Auth
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} MessageResponse
+// @Router /logout [post]
+func (h *GatewayHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	token := strings.Split(r.Header.Get("Authorization"), " ")[1]
+	_, err := h.authClient.Logout(r.Context(), &authPb.LogoutRequest{AccessToken: token})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(MessageResponse{Status: "logged out and token revoked"})
+}
+
+// @Summary Get all products
+// @Tags Products
+// @Produce json
+// @Success 200 {array} ProductResponse
+// @Router /products [get]
+func (h *GatewayHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.goodsClient.ListProducts(r.Context(), &goodsPb.ListProductsRequest{})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp.GetProducts())
+}
+
+// @Summary Add a new product
+// @Tags Products
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body CreateProductRequest true "Product INFO"
+// @Success 200 {object} ProductIDResponse
+// @Router /products [post]
+func (h *GatewayHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
+	var req CreateProductRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	resp, err := h.goodsClient.CreateProduct(r.Context(), &goodsPb.CreateProductRequest{Name: req.Name, Description: req.Description, Price: req.Price})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ProductIDResponse{ID: resp.GetId()})
+}
+
+// @Summary Create an order
+// @Tags Orders
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body CreateOrderRequest true "Order Details"
+// @Success 200 {object} OrderResponse
+// @Router /orders [post]
+func (h *GatewayHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
+	var req CreateOrderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	userID := r.Context().Value(userIDKey).(int64)
+	resp, err := h.orderClient.CreateOrder(r.Context(), &orderPb.CreateOrderRequest{
+		UserId: userID, ProductId: req.ProductID, Quantity: req.Quantity})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(OrderResponse{OrderID: resp.GetOrderId(), Status: resp.GetStatus()})
+}
+
+// --- MIDDLEWARE ---
 func authMiddleware(authClient authPb.AuthServiceClient, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 1. Достаем заголовок "Authorization: Bearer <token>"
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			http.Error(w, "missing authorization header", http.StatusUnauthorized)
 			return
 		}
-
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			http.Error(w, "invalid token format", http.StatusUnauthorized)
 			return
 		}
-		token := parts[1]
-
-		// 2. Стучимся в Auth Service по gRPC для проверки (включая проверку в Redis)
-		resp, err := authClient.ValidateToken(r.Context(), &authPb.ValidateTokenRequest{
-			AccessToken: token,
-		})
-
+		resp, err := authClient.ValidateToken(r.Context(), &authPb.ValidateTokenRequest{AccessToken: parts[1]})
 		if err != nil || !resp.GetIsValid() {
 			http.Error(w, "unauthorized or token revoked", http.StatusUnauthorized)
 			return
 		}
-
-		// 3. Кладем user_id в контекст запроса и передаем дальше
 		ctx := context.WithValue(r.Context(), userIDKey, resp.GetUserId())
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
 
+// --- ИНИЦИАЛИЗАЦИЯ И МАРШРУТИЗАТОР ---
 func main() {
-	// Инициализация трейсера Jaeger
 	jaegerAddr := os.Getenv("JAEGER_ADDR")
 	if jaegerAddr == "" {
 		jaegerAddr = "localhost:4317"
@@ -87,14 +235,12 @@ func main() {
 	tp, _ := tracer.InitTracer("api-gateway", jaegerAddr)
 	defer tp.Shutdown(context.Background())
 
-	// Подключения к gRPC сервисам (с трейсингом)
 	authAddr := os.Getenv("AUTH_SERVICE_ADDR")
 	if authAddr == "" {
 		authAddr = "localhost:50051"
 	}
 	authConn, _ := grpc.NewClient(authAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	defer authConn.Close()
-	authClient := authPb.NewAuthServiceClient(authConn)
 
 	goodsAddr := os.Getenv("GOODS_SERVICE_ADDR")
 	if goodsAddr == "" {
@@ -102,7 +248,6 @@ func main() {
 	}
 	goodsConn, _ := grpc.NewClient(goodsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	defer goodsConn.Close()
-	goodsClient := goodsPb.NewGoodsServiceClient(goodsConn)
 
 	orderAddr := os.Getenv("ORDER_SERVICE_ADDR")
 	if orderAddr == "" {
@@ -110,102 +255,32 @@ func main() {
 	}
 	orderConn, _ := grpc.NewClient(orderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	defer orderConn.Close()
-	orderClient := orderPb.NewOrderServiceClient(orderConn)
+
+	// Инициализируем наш хендлер-обработчик
+	h := &GatewayHandler{
+		authClient:  authPb.NewAuthServiceClient(authConn),
+		goodsClient: goodsPb.NewGoodsServiceClient(goodsConn),
+		orderClient: orderPb.NewOrderServiceClient(orderConn),
+	}
 
 	mux := http.NewServeMux()
 
-	// --- ПУБЛИЧНЫЕ РУЧКИ (Без токена) ---
-	mux.HandleFunc("POST /api/register", func(w http.ResponseWriter, r *http.Request) {
-		var req AuthRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		resp, err := authClient.Register(r.Context(), &authPb.RegisterRequest{Email: req.Email, Password: req.Password})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"user_id": resp.GetUserId()})
-	})
+	// Ручки (с использованием методов хендлера)
+	mux.HandleFunc("POST /api/register", h.Register)
+	mux.HandleFunc("POST /api/login", h.Login)
+	mux.HandleFunc("GET /api/products", h.ListProducts)
 
-	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
-		var req AuthRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		resp, err := authClient.Login(r.Context(), &authPb.LoginRequest{Email: req.Email, Password: req.Password})
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"access_token": resp.GetAccessToken()})
-	})
+	// Защищенные ручки (заворачиваем методы хендлера в миддлварь)
+	mux.HandleFunc("POST /api/logout", authMiddleware(h.authClient, h.Logout))
+	mux.HandleFunc("POST /api/products", authMiddleware(h.authClient, h.CreateProduct))
+	mux.HandleFunc("POST /api/orders", authMiddleware(h.authClient, h.CreateOrder))
 
-	mux.HandleFunc("GET /api/products", func(w http.ResponseWriter, r *http.Request) {
-		resp, err := goodsClient.ListProducts(r.Context(), &goodsPb.ListProductsRequest{})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp.GetProducts())
-
-	})
-
-	mux.Handle("GET /metrics", promhttp.Handler())
-
-	// --- ЗАЩИЩЕННЫЕ РУЧКИ (Нужен JWT) ---
-	// Заворачиваем функцию-обработчик в нашу authMiddleware
-
-	// 1. Выход (Logout)
-	mux.HandleFunc("POST /api/logout", authMiddleware(authClient, func(w http.ResponseWriter, r *http.Request) {
-		token := strings.Split(r.Header.Get("Authorization"), " ")[1]
-		_, err := authClient.Logout(r.Context(), &authPb.LogoutRequest{AccessToken: token})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"status": "logged out and token revoked"})
-	}))
-
-	// 2. Создание товара (допустим, это могут делать только авторизованные продавцы)
-	mux.HandleFunc("POST /api/products", authMiddleware(authClient, func(w http.ResponseWriter, r *http.Request) {
-		var req CreateProductRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		resp, err := goodsClient.CreateProduct(r.Context(), &goodsPb.CreateProductRequest{Name: req.Name, Description: req.Description, Price: req.Price})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"id": resp.GetId()})
-	}))
-
-	// 3. Создание заказа (user_id берем из контекста, а не из JSON)
-	mux.HandleFunc("POST /api/orders", authMiddleware(authClient, func(w http.ResponseWriter, r *http.Request) {
-		var req CreateOrderRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		// ДОСТАЕМ ИЗ КОНТЕКСТА ID АВТОРИЗОВАННОГО ПОЛЬЗОВАТЕЛЯ
-		userID := r.Context().Value(userIDKey).(int64)
-
-		resp, err := orderClient.CreateOrder(r.Context(), &orderPb.CreateOrderRequest{
-			UserId:    userID, // <-- Безопасно!
-			ProductId: req.ProductID,
-			Quantity:  req.Quantity,
-		})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"order_id": resp.GetOrderId(), "status": resp.GetStatus()})
-	}))
+	// Эндпоинты Swagger и Metrics
+	mux.HandleFunc("GET /swagger/", httpSwagger.WrapHandler)
 
 	log.Println("API Gateway is running on http://localhost:8080")
+	log.Println("Swagger Docs available at http://localhost:8080/swagger/index.html")
+
 	handler := otelhttp.NewHandler(mux, "api-gateway-http")
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("failed to serve HTTP: %v", err)

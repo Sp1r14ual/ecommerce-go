@@ -1,6 +1,6 @@
 # .PHONY означает, что это имена команд, а не названия файлов, 
 # чтобы Make не путался, если у тебя вдруг появится папка с именем "logs"
-.PHONY: up down clean logs proto tidy help migrate-auth migrate-order
+.PHONY: up down clean logs proto tidy help migrate-auth migrate-order swagger
 
 # --- DOCKER КОМАНДЫ ---
 
@@ -46,6 +46,13 @@ migrate-auth:
 # Создать новую миграцию для Order Service.
 migrate-order:
 	migrate create -ext sql -dir ./order-service/migrations -seq $(name)
+
+# --- SWAGGER КОМАНДЫ ---
+
+# Сгенерировать документацию Swagger для API Gateway
+swagger:
+	swag init -g api-gateway/cmd/main.go -o api-gateway/docs
+	@echo "Swagger docs generated successfully!"
 
 # --- ПОМОЩЬ ---
 
