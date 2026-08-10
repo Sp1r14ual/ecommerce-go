@@ -198,6 +198,7 @@ paths:
       - Auth
 securityDefinitions:
   BearerAuth:
+    description: 'Введите токен в формате: Bearer {твой_токен}'
     in: header
     name: Authorization
     type: apiKey

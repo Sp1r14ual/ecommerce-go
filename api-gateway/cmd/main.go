@@ -32,6 +32,7 @@ import (
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
+// @description Введите токен в формате: Bearer {твой_токен}
 
 // --- СТРУКТУРЫ (Запросы и Ответы) ---
 type AuthRequest struct {
