@@ -33,16 +33,16 @@ func main() {
 	defer dbPool.Close()
 
 	// 1.1 Создаем таблицу (В реальных проектах используют миграции, но для начала сойдет так)
-	_, err = dbPool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS users (
-			id SERIAL PRIMARY KEY,
-			email VARCHAR(255) UNIQUE NOT NULL,
-			password_hash VARCHAR(255) NOT NULL
-		);
-	`)
-	if err != nil {
-		log.Fatalf("Failed to create table: %v", err)
-	}
+	// _, err = dbPool.Exec(ctx, `
+	// 	CREATE TABLE IF NOT EXISTS users (
+	// 		id SERIAL PRIMARY KEY,
+	// 		email VARCHAR(255) UNIQUE NOT NULL,
+	// 		password_hash VARCHAR(255) NOT NULL
+	// 	);
+	// `)
+	// if err != nil {
+	// 	log.Fatalf("Failed to create table: %v", err)
+	// }
 
 	// 1.5 Подключаемся к Redis
 	redisAddr := os.Getenv("REDIS_ADDR")

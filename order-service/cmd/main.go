@@ -118,19 +118,19 @@ func main() {
 	defer dbPool.Close()
 
 	// Создаем таблицу
-	_, err = dbPool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS orders (
-			id SERIAL PRIMARY KEY,
-			user_id INT NOT NULL,
-			product_id VARCHAR(50) NOT NULL,
-			quantity INT NOT NULL,
-			total_price BIGINT NOT NULL,
-			status VARCHAR(50) NOT NULL
-		);
-	`)
-	if err != nil {
-		log.Fatalf("Failed to create orders table: %v", err)
-	}
+	// _, err = dbPool.Exec(ctx, `
+	// 	CREATE TABLE IF NOT EXISTS orders (
+	// 		id SERIAL PRIMARY KEY,
+	// 		user_id INT NOT NULL,
+	// 		product_id VARCHAR(50) NOT NULL,
+	// 		quantity INT NOT NULL,
+	// 		total_price BIGINT NOT NULL,
+	// 		status VARCHAR(50) NOT NULL
+	// 	);
+	// `)
+	// if err != nil {
+	// 	log.Fatalf("Failed to create orders table: %v", err)
+	// }
 
 	// --- 1.5 Подключение к Kafka ---
 	kafkaAddr := os.Getenv("KAFKA_ADDR")

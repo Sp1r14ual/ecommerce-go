@@ -83,6 +83,31 @@ services:
       - "3000:3000"
     depends_on:
       - prometheus
+  
+  auth-migrator:
+    image: migrate/migrate
+    volumes:
+      # Пробрасываем папку с файлами .sql внутрь контейнера
+      - ./auth-service/migrations:/migrations
+    command:
+      - -path=/migrations/
+      - -database=postgres://auth_user:auth_password@postgres:5432/auth_db?sslmode=disable&x-migrations-table=auth_schema_migrations
+      - up
+    depends_on:
+      postgres:
+        condition: service_healthy # Ждем, пока БД не будет готова принимать запросы
+
+  order-migrator:
+    image: migrate/migrate
+    volumes:
+      - ./order-service/migrations:/migrations
+    command:
+      - -path=/migrations/
+      - -database=postgres://auth_user:auth_password@postgres:5432/auth_db?sslmode=disable&x-migrations-table=order_schema_migrations
+      - up
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   auth-service:
     build: 
@@ -96,6 +121,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      auth-migrator:
+        condition: service_completed_successfully
 
   goods-service:
     build:
@@ -123,6 +150,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      order-migrator:
+        condition: service_completed_successfully 
       kafka-setup:
         condition: service_completed_successfully # Ждем успешного завершения скрипта
       goods-service:
